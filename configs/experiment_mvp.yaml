@@ -1,0 +1,18 @@
+name: mvp_scaffold
+seeds: [11, 17, 23, 29]
+regimes:
+  volatility: [low, medium, high]
+  toxicity: [0, 10, 30]
+  competition: [solo, with_competitor]
+agents: [A, B, C]
+single_run:
+  agent: B
+  agent_params:
+    spread: 1.0
+  regime:
+    volatility: low
+    toxicity: 0
+    competition: solo
+  episode_steps: 200
+  base_midprice: 100.0
+  size: 1.0
