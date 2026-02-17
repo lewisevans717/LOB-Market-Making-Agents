@@ -64,12 +64,15 @@ class SimulatedLOBEnv:
 
         inventory = self._state.inventory
         cash = self._state.cash
-        if fill_side == "bid":
-            inventory += fill_qty
-            cash -= fill_qty * float(fill_price)
-        elif fill_side == "ask":
-            inventory -= fill_qty
-            cash += fill_qty * float(fill_price)
+        if fill_side != "none":
+            if fill_price is None:
+                raise RuntimeError("Missing fill_price for fill.")
+            if fill_side == "bid":
+                inventory += fill_qty
+                cash -= fill_qty * fill_price
+            elif fill_side == "ask":
+                inventory -= fill_qty
+                cash += fill_qty * fill_price
 
         midprice = self._next_midprice(fill_side=fill_side, informed=informed)
         pnl = cash + inventory * midprice
@@ -166,4 +169,3 @@ class SimulatedLOBEnv:
             "final_pnl": float(last["pnl"]),
             "fills": float(fills),
         }
-

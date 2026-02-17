@@ -11,7 +11,33 @@ def _read_text(path: Path) -> str:
 
 
 def test_single_run_artifacts_schema_and_determinism(tmp_path: Path) -> None:
-    config_path = Path("configs/experiment_mvp.yaml")
+    config_path = tmp_path / "experiment_artifacts.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "name: mvp_scaffold",
+                "seeds: [11]",
+                "regimes:",
+                "  volatility: [low]",
+                "  toxicity: [0]",
+                "  competition: [solo]",
+                "agents: [A, B, C]",
+                "single_run:",
+                "  agent: A",
+                "  agent_params:",
+                "    spread: 1.0",
+                "  regime:",
+                "    volatility: low",
+                "    toxicity: 0",
+                "    competition: solo",
+                "  episode_steps: 200",
+                "  base_midprice: 100.0",
+                "  size: 1.0",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
     seed = 314
 
     code = run_single(config_path=config_path, seed=seed, output_dir=tmp_path)
@@ -58,4 +84,3 @@ def test_single_run_artifacts_schema_and_determinism(tmp_path: Path) -> None:
     assert _read_text(events_path) == events_before
     assert _read_text(summary_path) == summary_before
     assert _read_text(meta_path) == meta_before
-
