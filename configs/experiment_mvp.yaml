@@ -5,6 +5,9 @@ regimes:
   toxicity: [0, 10, 30]
   competition: [solo, with_competitor]
 agents: [A, B, C]
+metrics:
+  markout_horizon: 5
+  inventory_threshold: 3.0
 single_run:
   agent: B
   agent_params:

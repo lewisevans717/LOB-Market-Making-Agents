@@ -121,3 +121,24 @@ Total runs:
 - Structured logs with schema documented
 
 ---
+
+## 7) Running the CLI
+
+Run a single seeded episode:
+
+```bash
+PYTHONPATH=src python -m lob_market_making_agents.experiments.run single --config configs/experiment_mvp.yaml --seed 42
+```
+
+Aggregate metrics from run artifacts:
+
+```bash
+PYTHONPATH=src python -m lob_market_making_agents.experiments.run metrics --config configs/experiment_mvp.yaml --runs-dir results/runs --output-dir results/metrics
+```
+
+Metrics outputs:
+- `results/metrics/run_metrics.csv` (one row per run)
+- `results/metrics/condition_metrics.csv` (one row per condition)
+- `results/metrics/metrics_meta.json` (pipeline metadata and settings)
+
+---

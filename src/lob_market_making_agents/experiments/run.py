@@ -11,12 +11,20 @@ from lob_market_making_agents.agents import create_agent
 from lob_market_making_agents.env import RegimeConfig, SimulatedLOBEnv
 from lob_market_making_agents.env.models import AgentQuote
 from lob_market_making_agents.experiments.artifacts import build_run_id, write_run_artifacts
+from lob_market_making_agents.metrics import (
+    DEFAULT_INVENTORY_THRESHOLD,
+    DEFAULT_MARKOUT_HORIZON,
+    MetricsSettings,
+    run_metrics_pipeline,
+)
 from lob_market_making_agents.utils.config import load_yaml_config
 from lob_market_making_agents.utils.seeding import set_global_seed
 
 
 DEFAULT_CONFIG = Path("configs/experiment_mvp.yaml")
 DEFAULT_OUTPUT_DIR = Path("results")
+DEFAULT_RUNS_DIR = DEFAULT_OUTPUT_DIR / "runs"
+DEFAULT_METRICS_DIR = DEFAULT_OUTPUT_DIR / "metrics"
 
 
 @dataclass(frozen=True)
@@ -45,6 +53,13 @@ def build_parser() -> argparse.ArgumentParser:
     grid = subparsers.add_parser("grid", help="Run a grid from experiment config.")
     grid.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     grid.add_argument("--max-runs", type=int, default=10)
+
+    metrics = subparsers.add_parser("metrics", help="Aggregate per-run metrics from run artifacts.")
+    metrics.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    metrics.add_argument("--runs-dir", type=Path, default=DEFAULT_RUNS_DIR)
+    metrics.add_argument("--output-dir", type=Path, default=DEFAULT_METRICS_DIR)
+    metrics.add_argument("--markout-horizon", type=int, default=None)
+    metrics.add_argument("--inventory-threshold", type=float, default=None)
     return parser
 
 
@@ -170,6 +185,50 @@ def run_grid(config_path: Path, max_runs: int) -> int:
     return 0
 
 
+def run_metrics(
+    *,
+    config_path: Path,
+    runs_dir: Path = DEFAULT_RUNS_DIR,
+    output_dir: Path = DEFAULT_METRICS_DIR,
+    markout_horizon: int | None = None,
+    inventory_threshold: float | None = None,
+) -> int:
+    config = load_yaml_config(config_path)
+    metrics_cfg = config.get("metrics", {})
+
+    resolved_horizon = int(
+        markout_horizon
+        if markout_horizon is not None
+        else metrics_cfg.get("markout_horizon", DEFAULT_MARKOUT_HORIZON)
+    )
+    resolved_threshold = float(
+        inventory_threshold
+        if inventory_threshold is not None
+        else metrics_cfg.get("inventory_threshold", DEFAULT_INVENTORY_THRESHOLD)
+    )
+    if resolved_horizon <= 0:
+        print(f"[metrics] invalid markout horizon: {resolved_horizon} (must be positive)")
+        return 2
+
+    settings = MetricsSettings(
+        markout_horizon=resolved_horizon,
+        inventory_threshold=resolved_threshold,
+    )
+    try:
+        report = run_metrics_pipeline(runs_dir=runs_dir, output_dir=output_dir, settings=settings)
+    except ValueError as exc:
+        print(f"[metrics] error: {exc}")
+        return 1
+
+    print(
+        "[metrics] "
+        f"runs_processed={report['runs_processed']} "
+        f"groups={report['group_count']} "
+        f"output={output_dir}"
+    )
+    return 0
+
+
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
@@ -178,6 +237,14 @@ def main() -> int:
         return run_single(config_path=args.config, seed=args.seed, output_dir=args.output_dir)
     if args.command == "grid":
         return run_grid(config_path=args.config, max_runs=args.max_runs)
+    if args.command == "metrics":
+        return run_metrics(
+            config_path=args.config,
+            runs_dir=args.runs_dir,
+            output_dir=args.output_dir,
+            markout_horizon=args.markout_horizon,
+            inventory_threshold=args.inventory_threshold,
+        )
 
     parser.error(f"Unknown command: {args.command}")
     return 2
