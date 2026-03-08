@@ -1,4 +1,4 @@
-"""Run-level and condition-level metrics pipeline."""
+"""Run-level and condition-level metrics pipeline for BSE-native artifacts."""
 
 from __future__ import annotations
 
@@ -36,35 +36,50 @@ def discover_run_dirs(runs_dir: Path) -> tuple[list[Path], int]:
     return valid, skipped
 
 
-def parse_events_csv(path: Path) -> list[dict[str, Any]]:
-    """Load and parse typed event rows."""
+def parse_mm_state_csv(path: Path) -> list[dict[str, Any]]:
+    """Load and parse typed MM state rows."""
     with path.open("r", newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         rows = list(reader)
-    events: list[dict[str, Any]] = []
+
+    parsed: list[dict[str, Any]] = []
     for row in rows:
         fill_price_raw = (row.get("fill_price") or "").strip()
-        fill_price = float(fill_price_raw) if fill_price_raw else None
-        events.append(
+        parsed.append(
             {
-                "timestamp": int(row["timestamp"]),
-                "midprice": float(row["midprice"]),
-                "bid": float(row["bid"]),
-                "ask": float(row["ask"]),
-                "fill_side": str(row["fill_side"]),
-                "fill_qty": float(row["fill_qty"]),
-                "fill_price": fill_price,
+                "timestamp": int(float(row["timestamp"])),
                 "inventory": float(row["inventory"]),
                 "cash": float(row["cash"]),
                 "pnl": float(row["pnl"]),
+                "fill_side": str(row.get("fill_side", "none")),
+                "fill_price": float(fill_price_raw) if fill_price_raw else None,
+                "fill_qty": float(row.get("fill_qty", 0.0)),
+                "informed": int(float(row.get("informed", 0))),
             }
         )
-    return events
+    return parsed
+
+
+def parse_lob_frames_csv(path: Path) -> list[dict[str, Any]]:
+    """Load and parse typed top-of-book rows."""
+    with path.open("r", newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+
+    parsed: list[dict[str, Any]] = []
+    for row in rows:
+        parsed.append(
+            {
+                "timestamp": int(float(row["timestamp"])),
+                "midprice": float(row["midprice"]),
+            }
+        )
+    return parsed
 
 
 def parse_run_context(meta: dict[str, Any], run_dir_name: str) -> RunContext:
-    """Extract normalized context from meta.json."""
-    regime = meta.get("regime", {})
+    """Extract normalized context from run metadata."""
+    regime = dict(meta.get("regime", {}))
     return RunContext(
         run_id=str(meta.get("run_id", run_dir_name)),
         config_name=str(meta["config_name"]),
@@ -78,17 +93,18 @@ def parse_run_context(meta: dict[str, Any], run_dir_name: str) -> RunContext:
 
 def compute_run_metrics(
     *,
-    events: list[dict[str, Any]],
+    mm_state_rows: list[dict[str, Any]],
+    lob_rows: list[dict[str, Any]],
     summary: dict[str, Any],
     context: RunContext,
     settings: MetricsSettings,
 ) -> dict[str, Any]:
     """Compute run-level profitability, inventory-risk, and markout metrics."""
-    steps = len(events)
-    fills = float(sum(1 for event in events if event["fill_side"] != "none"))
+    steps = len(mm_state_rows)
+    fills = float(sum(1 for row in mm_state_rows if row["fill_side"] != "none"))
     fill_rate = fills / float(steps) if steps > 0 else 0.0
 
-    inventories = np.asarray([event["inventory"] for event in events], dtype=float)
+    inventories = np.asarray([row["inventory"] for row in mm_state_rows], dtype=float)
     if inventories.size == 0:
         inventory_mean = 0.0
         inventory_var = 0.0
@@ -101,11 +117,15 @@ def compute_run_metrics(
         inventory_max_abs = float(np.max(abs_inventory))
         inventory_exposure = float(np.mean(abs_inventory > settings.inventory_threshold))
 
-    markouts = _compute_markouts(events=events, horizon=settings.markout_horizon)
-    markout_key_mean = f"markout_mean_h{settings.markout_horizon}"
-    markout_key_std = f"markout_std_h{settings.markout_horizon}"
-    markout_key_p5 = f"markout_p5_h{settings.markout_horizon}"
-    markout_key_count = f"markout_count_h{settings.markout_horizon}"
+    markouts = _compute_markouts(
+        mm_state_rows=mm_state_rows,
+        lob_rows=lob_rows,
+        horizon=settings.markout_horizon,
+    )
+    key_mean = f"markout_mean_h{settings.markout_horizon}"
+    key_std = f"markout_std_h{settings.markout_horizon}"
+    key_p5 = f"markout_p5_h{settings.markout_horizon}"
+    key_count = f"markout_count_h{settings.markout_horizon}"
 
     if markouts:
         markout_arr = np.asarray(markouts, dtype=float)
@@ -119,10 +139,12 @@ def compute_run_metrics(
         markout_p5 = 0.0
         markout_count = 0.0
 
-    final_midprice = float(summary.get("final_midprice", events[-1]["midprice"] if events else 0.0))
-    final_inventory = float(summary.get("final_inventory", events[-1]["inventory"] if events else 0.0))
-    final_cash = float(summary.get("final_cash", events[-1]["cash"] if events else 0.0))
-    final_pnl = float(summary.get("final_pnl", events[-1]["pnl"] if events else 0.0))
+    final_midprice = float(summary.get("final_midprice", lob_rows[-1]["midprice"] if lob_rows else 0.0))
+    final_inventory = float(summary.get("final_inventory", mm_state_rows[-1]["inventory"] if mm_state_rows else 0.0))
+    final_cash = float(summary.get("final_cash", mm_state_rows[-1]["cash"] if mm_state_rows else 0.0))
+    final_pnl = float(summary.get("final_pnl", mm_state_rows[-1]["pnl"] if mm_state_rows else 0.0))
+
+    pnl_per_step = final_pnl / float(steps) if steps > 0 else 0.0
 
     return {
         "run_id": context.run_id,
@@ -139,14 +161,15 @@ def compute_run_metrics(
         "final_inventory": final_inventory,
         "final_cash": final_cash,
         "final_pnl": final_pnl,
+        "pnl_per_step": pnl_per_step,
         "inventory_mean": inventory_mean,
         "inventory_var": inventory_var,
         "inventory_max_abs": inventory_max_abs,
         "inventory_exposure_frac_abs_gt_threshold": inventory_exposure,
-        markout_key_mean: markout_mean,
-        markout_key_std: markout_std,
-        markout_key_p5: markout_p5,
-        markout_key_count: markout_count,
+        key_mean: markout_mean,
+        key_std: markout_std,
+        key_p5: markout_p5,
+        key_count: markout_count,
     }
 
 
@@ -168,7 +191,9 @@ def aggregate_condition_metrics(
     condition_rows: list[dict[str, Any]] = []
     for key in sorted(grouped.keys()):
         rows = grouped[key]
+
         pnl_arr = np.asarray([row["final_pnl"] for row in rows], dtype=float)
+        pnl_per_step_arr = np.asarray([row["pnl_per_step"] for row in rows], dtype=float)
         inv_mean_arr = np.asarray([row["inventory_mean"] for row in rows], dtype=float)
         inv_var_arr = np.asarray([row["inventory_var"] for row in rows], dtype=float)
         inv_max_arr = np.asarray([row["inventory_max_abs"] for row in rows], dtype=float)
@@ -194,6 +219,9 @@ def aggregate_condition_metrics(
                 "pnl_median": float(np.median(pnl_arr)) if pnl_arr.size else 0.0,
                 "pnl_std": float(np.std(pnl_arr)) if pnl_arr.size else 0.0,
                 "pnl_p5": float(np.percentile(pnl_arr, 5)) if pnl_arr.size else 0.0,
+                "pnl_per_step_mean": float(np.mean(pnl_per_step_arr)) if pnl_per_step_arr.size else 0.0,
+                "pnl_per_step_std": float(np.std(pnl_per_step_arr)) if pnl_per_step_arr.size else 0.0,
+                "pnl_per_step_p5": float(np.percentile(pnl_per_step_arr, 5)) if pnl_per_step_arr.size else 0.0,
                 "inventory_mean": float(np.mean(inv_mean_arr)) if inv_mean_arr.size else 0.0,
                 "inventory_var": float(np.mean(inv_var_arr)) if inv_var_arr.size else 0.0,
                 "inventory_max_abs": float(np.mean(inv_max_arr)) if inv_max_arr.size else 0.0,
@@ -207,6 +235,7 @@ def aggregate_condition_metrics(
                 mk_count: float(np.sum(mk_count_arr)) if mk_count_arr.size else 0.0,
             }
         )
+
     return condition_rows
 
 
@@ -223,11 +252,18 @@ def run_metrics_pipeline(
 
     for run_dir in valid_run_dirs:
         try:
-            events = parse_events_csv(run_dir / "events.csv")
+            mm_state = parse_mm_state_csv(run_dir / "mm_state.csv")
+            lob_rows = parse_lob_frames_csv(run_dir / "lob_frames.csv")
             summary = _load_json(run_dir / "summary.json")
             meta = _load_json(run_dir / "meta.json")
             context = parse_run_context(meta=meta, run_dir_name=run_dir.name)
-            row = compute_run_metrics(events=events, summary=summary, context=context, settings=settings)
+            row = compute_run_metrics(
+                mm_state_rows=mm_state,
+                lob_rows=lob_rows,
+                summary=summary,
+                context=context,
+                settings=settings,
+            )
             run_rows.append(row)
         except (OSError, ValueError, TypeError, json.JSONDecodeError, KeyError):
             parse_skips += 1
@@ -288,24 +324,28 @@ def run_metrics_pipeline(
     }
 
 
-def _compute_markouts(events: list[dict[str, Any]], horizon: int) -> list[float]:
-    mid_by_timestamp = {int(event["timestamp"]): float(event["midprice"]) for event in events}
+def _compute_markouts(mm_state_rows: list[dict[str, Any]], lob_rows: list[dict[str, Any]], horizon: int) -> list[float]:
+    mid_by_timestamp = {int(row["timestamp"]): float(row["midprice"]) for row in lob_rows}
     markouts: list[float] = []
-    for event in events:
-        side = str(event["fill_side"])
-        if side == "none":
+
+    for row in mm_state_rows:
+        fill_side = str(row["fill_side"])
+        if fill_side == "none":
             continue
-        fill_price = event["fill_price"]
+        fill_price = row["fill_price"]
         if fill_price is None:
             continue
-        timestamp = int(event["timestamp"])
-        horizon_mid = mid_by_timestamp.get(timestamp + horizon)
+
+        t = int(row["timestamp"])
+        horizon_mid = mid_by_timestamp.get(t + horizon)
         if horizon_mid is None:
             continue
-        if side == "bid":
+
+        if fill_side == "bid":
             markouts.append(float(horizon_mid - float(fill_price)))
-        elif side == "ask":
+        elif fill_side == "ask":
             markouts.append(float(float(fill_price) - horizon_mid))
+
     return markouts
 
 
@@ -323,4 +363,3 @@ def _write_csv(path: Path, rows: list[dict[str, Any]], columns: tuple[str, ...])
         writer.writeheader()
         for row in rows:
             writer.writerow({column: row.get(column, "") for column in columns})
-

@@ -1,14 +1,13 @@
-"""Market-making agent implementations."""
+"""Native BSE trader implementations for market-making experiments."""
 
-from lob_market_making_agents.agents.base import MarketMakingAgent, QuoteDecision
-from lob_market_making_agents.agents.factory import create_agent
-from lob_market_making_agents.agents.fixed_spread import FixedSpreadAgent
-from lob_market_making_agents.agents.inventory_aware import InventoryAwareAgent
+from lob_market_making_agents.agents.factory import create_mm_trader
+from lob_market_making_agents.agents.mm_a_bse import MMABSETrader
+from lob_market_making_agents.agents.mm_b_bse import MMBBSETrader
+from lob_market_making_agents.agents.toxic_bse import ToxicBSETrader
 
 __all__ = [
-    "FixedSpreadAgent",
-    "InventoryAwareAgent",
-    "MarketMakingAgent",
-    "QuoteDecision",
-    "create_agent",
+    "MMABSETrader",
+    "MMBBSETrader",
+    "ToxicBSETrader",
+    "create_mm_trader",
 ]

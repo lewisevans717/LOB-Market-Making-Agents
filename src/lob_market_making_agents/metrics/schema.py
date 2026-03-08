@@ -1,4 +1,4 @@
-"""Shared schemas and column contracts for metrics outputs."""
+"""Shared schemas and column contracts for BSE-native metrics outputs."""
 
 from __future__ import annotations
 
@@ -9,7 +9,9 @@ DEFAULT_MARKOUT_HORIZON = 5
 DEFAULT_INVENTORY_THRESHOLD = 3.0
 
 REQUIRED_RUN_FILES = (
-    "events.csv",
+    "tape.csv",
+    "lob_frames.csv",
+    "mm_state.csv",
     "summary.json",
     "meta.json",
 )
@@ -65,6 +67,7 @@ def run_metric_columns(markout_horizon: int) -> tuple[str, ...]:
         "final_inventory",
         "final_cash",
         "final_pnl",
+        "pnl_per_step",
         "inventory_mean",
         "inventory_var",
         "inventory_max_abs",
@@ -85,6 +88,9 @@ def condition_metric_columns(markout_horizon: int) -> tuple[str, ...]:
         "pnl_median",
         "pnl_std",
         "pnl_p5",
+        "pnl_per_step_mean",
+        "pnl_per_step_std",
+        "pnl_per_step_p5",
         "inventory_mean",
         "inventory_var",
         "inventory_max_abs",
@@ -95,4 +101,3 @@ def condition_metric_columns(markout_horizon: int) -> tuple[str, ...]:
         f"markout_p5_h{markout_horizon}",
         f"markout_count_h{markout_horizon}",
     )
-
