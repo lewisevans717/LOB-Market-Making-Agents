@@ -1,4 +1,4 @@
-"""Typed models for the simulation wrapper and run logs."""
+"""Shared typed models for BSE-first runtime configuration."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 
 @dataclass(frozen=True)
 class RegimeConfig:
-    """Top-level regime controls used by the simulator."""
+    """Top-level market regime controls exposed by experiment config."""
 
     volatility: str
     toxicity: float
@@ -24,37 +24,22 @@ class RegimeConfig:
 
 
 @dataclass(frozen=True)
-class AgentQuote:
-    """Single market-making quote."""
+class SessionConfig:
+    """BSE session controls."""
 
-    bid: float
-    ask: float
+    episode_steps: int = 500
+    base_midprice: float = 100.0
     size: float = 1.0
+    external_order_probability: float = 0.7
+    vol_window: int = 20
 
 
 @dataclass(frozen=True)
-class MarketState:
-    """State exposed to policy code."""
+class PopulationConfig:
+    """Participant population controls."""
 
-    timestamp: int
-    midprice: float
-    inventory: float
-    cash: float
-    pnl: float
-
-
-@dataclass(frozen=True)
-class EventRecord:
-    """Per-step log row."""
-
-    timestamp: int
-    midprice: float
-    bid: float
-    ask: float
-    fill_side: str
-    fill_qty: float
-    fill_price: float | None
-    inventory: float
-    cash: float
-    pnl: float
-
+    participant_count: int = 8
+    mm_trader_id: str = "MM0"
+    counterparty_prefix: str = "CP"
+    toxic_activation_prob: float = 1.0
+    toxic_aggression_ticks: int = 3

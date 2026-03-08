@@ -124,11 +124,21 @@ Total runs:
 
 ## 7) Running the CLI
 
+Initialize BSE submodule (required for `env.mode: bse`):
+
+```bash
+git submodule update --init --recursive
+```
+
 Run a single seeded episode:
 
 ```bash
 PYTHONPATH=src python -m lob_market_making_agents.experiments.run single --config configs/experiment_mvp.yaml --seed 42
 ```
+
+Backend selection is configured in `configs/experiment_mvp.yaml`:
+- `env.mode: simulated` (default)
+- `env.mode: bse` (BSE-backed adapter)
 
 Aggregate metrics from run artifacts:
 

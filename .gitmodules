@@ -1,0 +1,3 @@
+[submodule "third_party/BristolStockExchange"]
+	path = third_party/BristolStockExchange
+	url = https://github.com/davecliff/BristolStockExchange

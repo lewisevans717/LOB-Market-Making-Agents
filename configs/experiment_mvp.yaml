@@ -1,21 +1,46 @@
-name: mvp_scaffold
+name: mvp_bse_first
 seeds: [11, 17, 23, 29]
 regimes:
   volatility: [low, medium, high]
   toxicity: [0, 10, 30]
   competition: [solo, with_competitor]
-agents: [A, B, C]
+agents: [A, B]
+bse:
+  session:
+    episode_steps: 500
+    base_midprice: 100.0
+    size: 1.0
+    external_order_probability: 0.7
+    vol_window: 20
+  population:
+    participant_count: 8
+    mm_trader_id: MM0
+    counterparty_prefix: CP
+    toxic_activation_prob: 1.0
+    toxic_aggression_ticks: 3
+  agents:
+    A:
+      spread: 2.0
+    B:
+      base_spread: 2.0
+      inventory_skew_per_unit: 0.08
+      max_skew: 1.5
+      vol_spread_multiplier: 20.0
+      min_spread: 1.0
+      max_spread: 8.0
+    competitor_agent: A
+    competitor_params:
+      spread: 2.0
 metrics:
   markout_horizon: 5
   inventory_threshold: 3.0
 single_run:
   agent: B
-  agent_params:
-    spread: 1.0
+  agent_params: {}
   regime:
-    volatility: low
-    toxicity: 0
-    competition: solo
-  episode_steps: 200
+    volatility: high
+    toxicity: 10
+    competition: with_competitor
+  episode_steps: 500
   base_midprice: 100.0
   size: 1.0
