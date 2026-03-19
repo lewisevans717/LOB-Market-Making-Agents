@@ -126,10 +126,14 @@ def build_external_order(
     mid = int(round(reference_mid))
 
     if side == "buy":
-        limit = min(SYS_MAX, mid + int(rng.integers(2, 8)))
+        limit = min(SYS_MAX - 1, mid + int(rng.integers(2, 8)))
+        if limit < SYS_MIN:
+            return None, None
         assignment = Order(participant.tid, "Bid", limit, 1, time, qid)
     else:
-        limit = max(SYS_MIN, mid - int(rng.integers(2, 8)))
+        limit = max(SYS_MIN + 1, mid - int(rng.integers(2, 8)))
+        if limit > SYS_MAX:
+            return None, None
         assignment = Order(participant.tid, "Ask", limit, 1, time, qid)
 
     participant.trader.orders = [assignment]
