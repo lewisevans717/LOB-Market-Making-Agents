@@ -269,7 +269,7 @@ def run_grid(config_path: Path, max_runs: int, output_dir: Path = DEFAULT_OUTPUT
     config = load_yaml_config(config_path)
 
     seeds = [int(seed) for seed in _as_list(config.get("seeds"), [42])]
-    agents = [str(agent).upper() for agent in _as_list(config.get("agents"), ["A", "B"]) if str(agent).upper() in {"A", "B"}]
+    agents = [str(agent).upper() for agent in _as_list(config.get("agents"), ["A", "B"]) if str(agent).upper() in {"A", "B", "C"}]
     regimes = config.get("regimes", {})
     volatilities = [str(v) for v in _as_list(regimes.get("volatility"), ["low"])]
     toxicities = [float(t) for t in _as_list(regimes.get("toxicity"), [0.0])]

@@ -78,6 +78,7 @@ def run_bse_session(
     # Only external participant-initiated trades are counted — MM quote activity is excluded.
     recent_trade_signs: list[float] = []
     flow_window = max(1, int(session_config.vol_window))
+    flow_imbalance: float = 0.0
 
     tape_cursor = 0
     volatility_sigma = _volatility_sigma(regime.volatility)
@@ -119,6 +120,7 @@ def run_bse_session(
             time=time,
             reference_mid=reference_mid,
             vol_proxy=_rolling_volatility(mid_history, int(session_config.vol_window)),
+            flow_imbalance=flow_imbalance,
             on_trade=apply_trade,
         )
 
@@ -240,9 +242,11 @@ def _process_mm_quotes(
     time: float,
     reference_mid: float,
     vol_proxy: float,
+    flow_imbalance: float,
     on_trade: Any,
 ) -> None:
     for mm in mm_traders:
+        mm.flow_imbalance = flow_imbalance
         _cancel_if_present(exchange=exchange, time=time, order=getattr(mm, "last_bid_order", None))
         _cancel_if_present(exchange=exchange, time=time, order=getattr(mm, "last_ask_order", None))
 

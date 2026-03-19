@@ -4,7 +4,7 @@ regimes:
   volatility: [low, medium, high]
   toxicity: [0, 10, 30]
   competition: [solo, with_competitor]
-agents: [A, B]
+agents: [A, B, C]
 bse:
   session:
     episode_steps: 500
@@ -28,6 +28,11 @@ bse:
       vol_spread_multiplier: 20.0
       min_spread: 1.0
       max_spread: 8.0
+    C:
+      epsilon: 0.1
+      lambda_penalty: 0.01
+      spread_levels: [0.5, 1.0, 1.5, 2.0]
+      skew_levels: [-2, -1, 0, 1, 2]
     competitor_agent: A
     competitor_params:
       spread: 2.0
@@ -38,9 +43,9 @@ single_run:
   agent: B
   agent_params: {}
   regime:
-    volatility: high
+    volatility: low
     toxicity: 10
-    competition: with_competitor
+    competition: solo
   episode_steps: 500
   base_midprice: 100.0
   size: 1.0
