@@ -59,6 +59,11 @@ def build_parser() -> argparse.ArgumentParser:
     grid.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     grid.add_argument("--max-runs", type=int, default=10)
     grid.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    grid.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-execute conditions whose summary.json already exists (default: skip).",
+    )
 
     metrics = subparsers.add_parser("metrics", help="Aggregate metrics from BSE-native run artifacts.")
     metrics.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
@@ -265,8 +270,14 @@ def run_single(config_path: Path, seed: int, output_dir: Path = DEFAULT_OUTPUT_D
     return 0
 
 
-def run_grid(config_path: Path, max_runs: int, output_dir: Path = DEFAULT_OUTPUT_DIR) -> int:
+def run_grid(
+    config_path: Path,
+    max_runs: int,
+    output_dir: Path = DEFAULT_OUTPUT_DIR,
+    force: bool = False,
+) -> int:
     config = load_yaml_config(config_path)
+    config_name = str(config.get("name", "default"))
 
     seeds = [int(seed) for seed in _as_list(config.get("seeds"), [42])]
     agents = [str(agent).upper() for agent in _as_list(config.get("agents"), ["A", "B"]) if str(agent).upper() in {"A", "B", "C"}]
@@ -277,6 +288,7 @@ def run_grid(config_path: Path, max_runs: int, output_dir: Path = DEFAULT_OUTPUT
 
     planned_total = len(agents) * len(volatilities) * len(toxicities) * len(competitions) * len(seeds)
     executed = 0
+    skipped = 0
 
     for agent, volatility, toxicity, competition, seed in itertools.product(
         agents,
@@ -287,6 +299,22 @@ def run_grid(config_path: Path, max_runs: int, output_dir: Path = DEFAULT_OUTPUT
     ):
         if executed >= max_runs:
             break
+
+        # Resume: a finished run leaves summary.json in its run_dir.
+        # build_run_id is pure (no session work), so the existence check is cheap.
+        run_id = build_run_id(
+            config_name=config_name,
+            agent=agent,
+            volatility=volatility,
+            toxicity=float(toxicity),
+            competition=competition,
+            seed=int(seed),
+        )
+        run_dir = output_dir / "runs" / run_id
+        if not force and (run_dir / "summary.json").exists():
+            skipped += 1
+            print(f"[grid] skip run_id={run_id} (already complete)")
+            continue
 
         spec = _run_spec_for_condition(
             config=config,
@@ -307,7 +335,9 @@ def run_grid(config_path: Path, max_runs: int, output_dir: Path = DEFAULT_OUTPUT
             f"final_pnl={summary['final_pnl']:.4f} output={run_dir}"
         )
 
-    print(f"[grid] planned={planned_total} executed={executed} max_runs={max_runs}")
+    print(
+        f"[grid] planned={planned_total} executed={executed} skipped={skipped} max_runs={max_runs}"
+    )
     return 0
 
 
@@ -364,7 +394,12 @@ def main() -> int:
     if args.command == "single":
         return run_single(config_path=args.config, seed=args.seed, output_dir=args.output_dir)
     if args.command == "grid":
-        return run_grid(config_path=args.config, max_runs=args.max_runs, output_dir=args.output_dir)
+        return run_grid(
+            config_path=args.config,
+            max_runs=args.max_runs,
+            output_dir=args.output_dir,
+            force=args.force,
+        )
     if args.command == "metrics":
         return run_metrics(
             config_path=args.config,

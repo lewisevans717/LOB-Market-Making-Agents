@@ -15,7 +15,18 @@ SYS_MAX = int(getattr(BSE, "bse_sys_maxprice", 500))
 
 
 class ToxicBSETrader(TraderBase):
-    """Toxic flow trader that tends to submit marketable directional orders."""
+    """Aggressive liquidity-taking participant used to model "toxic" order flow.
+
+    "Toxic" here means *aggressive*, not *informed*: this trader has no oracle
+    access to future midprices. When activated by the session runner it submits
+    marketable orders that lift the ask or hit the bid via
+    ``make_aggressive_order``, anchored to a reference midprice rather than to
+    any forward-looking signal. The adverse-selection pressure it imposes on
+    the market maker arises from order-flow imbalance and price impact, not
+    from directional knowledge of where the price is heading. This is a
+    deliberate simplification of classical informed-trader models and is
+    documented as such in the report's Limitations section.
+    """
 
     def __init__(self, tid: str, params: dict[str, Any] | None = None, time: float = 0.0) -> None:
         super().__init__(ttype="TOXIC", tid=tid, balance=0.0, params=params or {}, time=time)
