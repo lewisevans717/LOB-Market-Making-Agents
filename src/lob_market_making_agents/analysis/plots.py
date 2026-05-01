@@ -47,7 +47,7 @@ def parse_lambda_label(config_name: str) -> float | None:
         return None
     tail = config_name[idx + len(marker):]
     try:
-        return float(tail.replace("p", "."))
+        return float(tail.replace("p", ".")) # p is used instead of . to avoid issues with file naming and parsing
     except ValueError:
         return None
 
@@ -66,7 +66,7 @@ def save_figure(fig: Any, path: Path) -> Path:
 
 
 def agent_palette() -> dict[str, str]:
-    """Stable, colour-blind-friendly palette."""
+    """Stable, colour-blind-friendly, and high-contrast palette."""
     return {
         "A": "#4C72B0",
         "B": "#55A868",
