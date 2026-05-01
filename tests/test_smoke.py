@@ -51,6 +51,12 @@ def _write_bse_config(path: Path, *, agent: str = "A") -> None:
                 "      lambda_penalty: 0.01",
                 "      spread_levels: [0.5, 1.0, 1.5, 2.0]",
                 "      skew_levels: [-2, -1, 0, 1, 2]",
+                "    C_PLUS:",
+                "      epsilon: 0.1",
+                "      lambda_penalty: 0.01",
+                "      gamma: 0.95",
+                "      spread_levels: [0.5, 1.0, 1.5, 2.0]",
+                "      skew_levels: [-2, -1, 0, 1, 2]",
                 "    competitor_agent: A",
                 "    competitor_params:",
                 "      spread: 2.0",
@@ -91,6 +97,13 @@ def test_run_single_agent_b_smoke(tmp_path: Path) -> None:
 def test_run_single_agent_c_smoke(tmp_path: Path) -> None:
     config_path = tmp_path / "single_c.yaml"
     _write_bse_config(config_path, agent="C")
+    code = run_single(config_path=config_path, seed=123, output_dir=tmp_path)
+    assert code == 0
+
+
+def test_run_single_agent_cplus_smoke(tmp_path: Path) -> None:
+    config_path = tmp_path / "single_cplus.yaml"
+    _write_bse_config(config_path, agent="C_PLUS")
     code = run_single(config_path=config_path, seed=123, output_dir=tmp_path)
     assert code == 0
 

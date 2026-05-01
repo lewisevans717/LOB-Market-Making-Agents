@@ -4,10 +4,10 @@ regimes:
   volatility: [low, medium, high]
   toxicity: [0, 10, 30]
   competition: [solo, with_competitor]
-agents: [A, B, C]
+agents: [A, B, C, C_PLUS]
 bse:
   session:
-    episode_steps: 1000
+    episode_steps: 5000
     base_midprice: 100.0
     size: 1.0
     external_order_probability: 0.7
@@ -33,6 +33,12 @@ bse:
       lambda_penalty: 0.01
       spread_levels: [0.5, 1.0, 1.5, 2.0]
       skew_levels: [-2, -1, 0, 1, 2]
+    C_PLUS:
+      epsilon: 0.1
+      lambda_penalty: 0.01
+      gamma: 0.95
+      spread_levels: [0.5, 1.0, 1.5, 2.0]
+      skew_levels: [-2, -1, 0, 1, 2]
     competitor_agent: A
     competitor_params:
       spread: 2.0
@@ -46,6 +52,14 @@ single_run:
     volatility: low
     toxicity: 10
     competition: solo
-  episode_steps: 1000
+  episode_steps: 5000
   base_midprice: 100.0
   size: 1.0
+pareto:
+  lambdas: [0.0, 0.001, 0.01, 0.05, 0.1, 0.5]
+  volatilities: [low, medium, high]
+  toxicity: 10
+  competition: solo
+transfer:
+  source_regime: { volatility: low, toxicity: 0, competition: solo }
+  target_regime: { volatility: high, toxicity: 30, competition: solo }

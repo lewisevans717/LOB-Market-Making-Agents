@@ -8,7 +8,9 @@ defined as  ΔPnL − λ·q².
 
 from __future__ import annotations
 
+import json
 from itertools import product
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -69,6 +71,57 @@ class MMCBSETrader(MMABSETrader):
         # Reproducible per-agent RNG (seeded from tid hash)
         self.rng = np.random.default_rng(abs(hash(tid)) % (2**31))
 
+        # Transfer-learning support: optionally warm-start the Q-table from a
+        # previously-saved policy and/or freeze updates so the session evaluates
+        # a fixed policy under regime shift (used by the `transfer` CLI).
+        self.freeze: bool = bool(cfg.get("freeze", False))
+        self.save_policy_path: str | None = cfg.get("save_policy_path") or None
+        initial_path = cfg.get("initial_policy_path") or None
+        if initial_path is not None:
+            self.load_policy(Path(initial_path))
+        if self.freeze:
+            self.epsilon = 0.0
+
+    # -- policy persistence (used by the regime-shift transfer experiment) -----
+
+    def save_policy(self, path: Path) -> None:
+        """Write Q-table, visit counts, and discretisation metadata to JSON."""
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "q_table": self.q_table.tolist(),
+            "action_counts": self.action_counts.tolist(),
+            "shape": [self.n_states, self.n_actions],
+            "inv_bins": self.inv_bins.tolist(),
+            "vol_bins": self.vol_bins.tolist(),
+            "flow_bins": self.flow_bins.tolist(),
+            "action_grid": [list(a) for a in self.action_grid],
+        }
+        with path.open("w", encoding="utf-8") as fh:
+            json.dump(payload, fh)
+
+    def load_policy(self, path: Path) -> None:
+        """Restore Q-table and visit counts from a saved policy.
+
+        The state/action grid in the file must match this agent's grid; we
+        verify shape rather than silently accepting a different discretisation.
+        """
+        with Path(path).open(encoding="utf-8") as fh:
+            payload = json.load(fh)
+        q = np.asarray(payload["q_table"], dtype=float)
+        c = np.asarray(payload["action_counts"], dtype=float)
+        if q.shape != (self.n_states, self.n_actions):
+            raise ValueError(
+                f"Q-table shape mismatch: file {q.shape} vs agent {(self.n_states, self.n_actions)}"
+            )
+        self.q_table = q
+        self.action_counts = c
+
+    def finalize(self) -> None:
+        """Called by the session at the end of an episode; persists the policy if configured."""
+        if self.save_policy_path:
+            self.save_policy(Path(self.save_policy_path))
+
     # -- internals -------------------------------------------------------------
 
     def _discretize_state(self, vol_proxy: float) -> int:
@@ -86,7 +139,7 @@ class MMCBSETrader(MMABSETrader):
 
     def _update_q(self, reward: float) -> None:
         """Incremental mean update for the last (state, action) pair."""
-        if self.last_state_idx is None:
+        if self.last_state_idx is None or self.freeze:
             return
         s, a = self.last_state_idx, self.last_action_idx
         self.action_counts[s, a] += 1

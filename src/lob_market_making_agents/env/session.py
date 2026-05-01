@@ -225,6 +225,12 @@ def run_bse_session(
                 }
             )
 
+    # End-of-session hook: agents (Agent C in particular) may persist learned
+    # policies via finalize(); other agents are unaffected.
+    finalize_hook = getattr(main_mm, "finalize", None)
+    if callable(finalize_hook):
+        finalize_hook()
+
     summary = _build_summary(mm_state_rows=mm_state_rows, lob_frames=lob_frames)
     return SessionResult(
         tape_rows=tuple(tape_rows),

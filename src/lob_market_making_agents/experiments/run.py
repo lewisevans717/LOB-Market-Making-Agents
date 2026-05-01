@@ -65,6 +65,36 @@ def build_parser() -> argparse.ArgumentParser:
         help="Re-execute conditions whose summary.json already exists (default: skip).",
     )
 
+    pareto = subparsers.add_parser(
+        "pareto",
+        help="Sweep Agent C inventory penalty lambda × volatility × seed at fixed (toxicity, competition).",
+    )
+    pareto.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    pareto.add_argument("--max-runs", type=int, default=1080)
+    pareto.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR / "runs" / "pareto")
+    pareto.add_argument("--force", action="store_true")
+    pareto.add_argument(
+        "--agents",
+        type=str,
+        default="C,C_PLUS",
+        help="Comma-separated agent labels to sweep (default: C,C_PLUS).",
+    )
+
+    transfer = subparsers.add_parser(
+        "transfer",
+        help="Regime-shift transfer: train Agent C in source, evaluate frozen policy in target (and reverse).",
+    )
+    transfer.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    transfer.add_argument("--max-runs", type=int, default=240)
+    transfer.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR / "runs" / "transfer")
+    transfer.add_argument("--force", action="store_true")
+    transfer.add_argument(
+        "--agents",
+        type=str,
+        default="C,C_PLUS",
+        help="Comma-separated agent labels to sweep (default: C,C_PLUS).",
+    )
+
     metrics = subparsers.add_parser("metrics", help="Aggregate metrics from BSE-native run artifacts.")
     metrics.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     metrics.add_argument("--runs-dir", type=Path, default=DEFAULT_RUNS_DIR)
@@ -280,7 +310,7 @@ def run_grid(
     config_name = str(config.get("name", "default"))
 
     seeds = [int(seed) for seed in _as_list(config.get("seeds"), [42])]
-    agents = [str(agent).upper() for agent in _as_list(config.get("agents"), ["A", "B"]) if str(agent).upper() in {"A", "B", "C"}]
+    agents = [str(agent).upper() for agent in _as_list(config.get("agents"), ["A", "B"]) if str(agent).upper() in {"A", "B", "C", "C_PLUS"}]
     regimes = config.get("regimes", {})
     volatilities = [str(v) for v in _as_list(regimes.get("volatility"), ["low"])]
     toxicities = [float(t) for t in _as_list(regimes.get("toxicity"), [0.0])]
@@ -337,6 +367,239 @@ def run_grid(
 
     print(
         f"[grid] planned={planned_total} executed={executed} skipped={skipped} max_runs={max_runs}"
+    )
+    return 0
+
+
+def _format_lambda_label(lam: float) -> str:
+    """Stable, filesystem-safe label for a lambda value (e.g. 0.01 -> 'lam0p010000')."""
+    return f"lam{lam:.6f}".replace(".", "p")
+
+
+def run_pareto(
+    config_path: Path,
+    max_runs: int,
+    output_dir: Path,
+    force: bool = False,
+    agents: str = "C,C_PLUS",
+) -> int:
+    config = load_yaml_config(config_path)
+    base_name = str(config.get("name", "default"))
+    pareto_cfg = dict(config.get("pareto", {}))
+
+    lambdas = [float(x) for x in _as_list(pareto_cfg.get("lambdas"), [0.01])]
+    volatilities = [str(v) for v in _as_list(pareto_cfg.get("volatilities"), ["low", "medium", "high"])]
+    toxicity = float(pareto_cfg.get("toxicity", 10.0))
+    competition = str(pareto_cfg.get("competition", "solo"))
+    seeds = [int(seed) for seed in _as_list(config.get("seeds"), [42])]
+    agent_keys = [a.strip().upper() for a in agents.split(",") if a.strip()]
+
+    _, session_cfg, population_cfg, agents_cfg = _base_blocks(config)
+    competitor_settings = {
+        "competitor_agent": str(agents_cfg.get("competitor_agent", "A")),
+        "competitor_params": dict(agents_cfg.get("competitor_params", {"spread": 2.0})),
+    }
+
+    planned_total = len(agent_keys) * len(lambdas) * len(volatilities) * len(seeds)
+    executed = 0
+    skipped = 0
+
+    for agent_key, lam, volatility, seed in itertools.product(agent_keys, lambdas, volatilities, seeds):
+        if executed >= max_runs:
+            break
+
+        config_name = f"{base_name}_pareto_{_format_lambda_label(lam)}"
+        run_id = build_run_id(
+            config_name=config_name,
+            agent=agent_key,
+            volatility=volatility,
+            toxicity=toxicity,
+            competition=competition,
+            seed=int(seed),
+        )
+        run_dir = output_dir / "runs" / run_id
+        if not force and (run_dir / "summary.json").exists():
+            skipped += 1
+            print(f"[pareto] skip run_id={run_id} (already complete)")
+            continue
+
+        base_agent_params = dict(agents_cfg.get(agent_key, {}))
+        agent_params = {**base_agent_params, "lambda_penalty": float(lam)}
+        spec = RunSpec(
+            config_name=config_name,
+            agent=agent_key,
+            agent_params=agent_params,
+            regime=RegimeConfig(volatility=volatility, toxicity=toxicity, competition=competition),
+            session_config=SessionConfig(
+                episode_steps=int(session_cfg.get("episode_steps", 200)),
+                base_midprice=float(session_cfg.get("base_midprice", 100.0)),
+                size=float(session_cfg.get("size", 1.0)),
+                external_order_probability=float(session_cfg.get("external_order_probability", 0.7)),
+                vol_window=int(session_cfg.get("vol_window", 20)),
+            ),
+            population_config=_population_config_from_map(population_cfg),
+            agent_settings=competitor_settings,
+        )
+        run_id, summary, run_dir = _execute_run(
+            spec=spec,
+            seed=int(seed),
+            output_dir=output_dir,
+            config_path=config_path,
+        )
+        executed += 1
+        print(
+            f"[pareto] {executed}/{min(planned_total, max_runs)} "
+            f"agent={agent_key} lambda={lam} vol={volatility} seed={seed} "
+            f"final_pnl={summary['final_pnl']:.4f} output={run_dir}"
+        )
+
+    print(
+        f"[pareto] planned={planned_total} executed={executed} skipped={skipped} max_runs={max_runs}"
+    )
+    return 0
+
+
+def _regime_label(regime: dict[str, Any]) -> str:
+    """Compact, filesystem-safe label for a regime dict."""
+    tox = int(round(float(regime.get("toxicity", 0))))
+    return f"{regime.get('volatility', 'low')}_tox{tox}_{regime.get('competition', 'solo')}"
+
+
+def run_transfer(
+    config_path: Path,
+    max_runs: int,
+    output_dir: Path,
+    force: bool = False,
+    agents: str = "C,C_PLUS",
+) -> int:
+    """Train each learner agent in a source regime, freeze, evaluate in target regime (both directions).
+
+    For each (agent, seed) pair, runs four sessions:
+      1. train_<source>: standard learning run; saves Q-table to policies/.
+      2. transferred_<source>_to_<target>: loads (1)'s policy, freeze=True, evaluates in target.
+      3. train_<target>: standard learning run; saves Q-table.
+      4. transferred_<target>_to_<source>: loads (3)'s policy, freeze=True, evaluates in source.
+
+    Native baselines (train and evaluate in the same regime, no transfer) are
+    intentionally NOT re-run: the core grid already provides them at matched
+    seeds, and the analysis notebook joins by seed × regime.
+    """
+    config = load_yaml_config(config_path)
+    base_name = str(config.get("name", "default"))
+    transfer_cfg = dict(config.get("transfer", {}))
+    source_regime = dict(transfer_cfg.get("source_regime", {"volatility": "low", "toxicity": 0, "competition": "solo"}))
+    target_regime = dict(transfer_cfg.get("target_regime", {"volatility": "high", "toxicity": 30, "competition": "solo"}))
+    seeds = [int(seed) for seed in _as_list(config.get("seeds"), [42])]
+    agent_keys = [a.strip().upper() for a in agents.split(",") if a.strip()]
+
+    _, session_cfg, population_cfg, agents_cfg = _base_blocks(config)
+    competitor_settings = {
+        "competitor_agent": str(agents_cfg.get("competitor_agent", "A")),
+        "competitor_params": dict(agents_cfg.get("competitor_params", {"spread": 2.0})),
+    }
+
+    src_label = _regime_label(source_regime)
+    tgt_label = _regime_label(target_regime)
+    policies_dir = output_dir / "policies"
+    policies_dir.mkdir(parents=True, exist_ok=True)
+
+    def _build_spec(
+        *,
+        agent_key: str,
+        regime: dict[str, Any],
+        extra_params: dict[str, Any],
+        config_name: str,
+    ) -> RunSpec:
+        base_agent_params = dict(agents_cfg.get(agent_key, {}))
+        return RunSpec(
+            config_name=config_name,
+            agent=agent_key,
+            agent_params={**base_agent_params, **extra_params},
+            regime=RegimeConfig(
+                volatility=str(regime["volatility"]),
+                toxicity=float(regime["toxicity"]),
+                competition=str(regime["competition"]),
+            ),
+            session_config=SessionConfig(
+                episode_steps=int(session_cfg.get("episode_steps", 200)),
+                base_midprice=float(session_cfg.get("base_midprice", 100.0)),
+                size=float(session_cfg.get("size", 1.0)),
+                external_order_probability=float(session_cfg.get("external_order_probability", 0.7)),
+                vol_window=int(session_cfg.get("vol_window", 20)),
+            ),
+            population_config=_population_config_from_map(population_cfg),
+            agent_settings=competitor_settings,
+        )
+
+    phases = (
+        ("train", source_regime, src_label, "train_calm"),
+        ("transferred", target_regime, tgt_label, "transferred_calm_to_stressed"),
+        ("train", target_regime, tgt_label, "train_stressed"),
+        ("transferred", source_regime, src_label, "transferred_stressed_to_calm"),
+    )
+
+    planned_total = len(agent_keys) * len(phases) * len(seeds)
+    executed = 0
+    skipped = 0
+
+    for agent_key in agent_keys:
+        for seed in seeds:
+            # Policies are per-(agent, seed) so a C-trained policy is never loaded by C+.
+            src_policy = policies_dir / f"seed{seed}_{agent_key}_{src_label}.json"
+            tgt_policy = policies_dir / f"seed{seed}_{agent_key}_{tgt_label}.json"
+
+            for phase_kind, regime, regime_lbl, phase_tag in phases:
+                if executed >= max_runs:
+                    break
+
+                config_name = f"{base_name}_transfer_{phase_tag}"
+                run_id = build_run_id(
+                    config_name=config_name,
+                    agent=agent_key,
+                    volatility=str(regime["volatility"]),
+                    toxicity=float(regime["toxicity"]),
+                    competition=str(regime["competition"]),
+                    seed=int(seed),
+                )
+                run_dir = output_dir / "runs" / run_id
+                if not force and (run_dir / "summary.json").exists():
+                    skipped += 1
+                    print(f"[transfer] skip run_id={run_id} (already complete)")
+                    continue
+
+                if phase_kind == "train":
+                    save_target = src_policy if regime_lbl == src_label else tgt_policy
+                    extra_params = {"save_policy_path": str(save_target)}
+                else:
+                    load_source = tgt_policy if regime_lbl == src_label else src_policy
+                    if not load_source.exists():
+                        raise RuntimeError(
+                            f"transfer phase {phase_tag} for agent={agent_key} seed={seed} "
+                            f"requires {load_source} which does not exist — run the train phase first."
+                        )
+                    extra_params = {"initial_policy_path": str(load_source), "freeze": True}
+
+                spec = _build_spec(agent_key=agent_key, regime=regime, extra_params=extra_params, config_name=config_name)
+                run_id, summary, run_dir = _execute_run(
+                    spec=spec,
+                    seed=int(seed),
+                    output_dir=output_dir,
+                    config_path=config_path,
+                )
+                executed += 1
+                print(
+                    f"[transfer] {executed}/{min(planned_total, max_runs)} "
+                    f"agent={agent_key} phase={phase_tag} seed={seed} "
+                    f"final_pnl={summary['final_pnl']:.4f} output={run_dir}"
+                )
+
+            if executed >= max_runs:
+                break
+        if executed >= max_runs:
+            break
+
+    print(
+        f"[transfer] planned={planned_total} executed={executed} skipped={skipped} max_runs={max_runs}"
     )
     return 0
 
@@ -399,6 +662,22 @@ def main() -> int:
             max_runs=args.max_runs,
             output_dir=args.output_dir,
             force=args.force,
+        )
+    if args.command == "pareto":
+        return run_pareto(
+            config_path=args.config,
+            max_runs=args.max_runs,
+            output_dir=args.output_dir,
+            force=args.force,
+            agents=args.agents,
+        )
+    if args.command == "transfer":
+        return run_transfer(
+            config_path=args.config,
+            max_runs=args.max_runs,
+            output_dir=args.output_dir,
+            force=args.force,
+            agents=args.agents,
         )
     if args.command == "metrics":
         return run_metrics(
