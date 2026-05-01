@@ -1,9 +1,8 @@
 """Shared helpers used by the analysis notebooks (notebooks/01..03).
 
-Kept deliberately small — each function does one thing the notebooks would
+Kept deliberately small so each function does one thing the notebooks would
 otherwise repeat. The notebooks own the report-driven plotting decisions
-(facet layout, palette, annotations); these helpers own only the boring
-mechanics that benefit from a single source of truth.
+(facet layout, palette, annotations)
 """
 
 from __future__ import annotations
@@ -27,10 +26,7 @@ def bootstrap_ci(
     confidence: float = 0.95,
     seed: int = 0,
 ) -> tuple[float, float, float]:
-    """Return (mean, lo, hi) for a percentile bootstrap on the sample mean.
-
-    No scipy dependency to keep the helper trivially debuggable.
-    """
+    """Return (mean, lo, hi) for a percentile bootstrap on the sample mean."""
     arr = np.asarray(samples, dtype=float)
     arr = arr[~np.isnan(arr)]
     if arr.size == 0:
