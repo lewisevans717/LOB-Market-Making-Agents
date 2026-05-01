@@ -39,6 +39,10 @@ class MMABSETrader(TraderBase):
         if volatility_proxy < 0:
             raise ValueError("volatility_proxy must be non-negative")
         half = self.spread / 2.0
+        # WHY round-then-cast and force ask>bid: BSE prices are integer ticks
+        # (`bse_sys_minprice` .. `bse_sys_maxprice`). At small `spread`, naive
+        # rounding can yield bid==ask, which BSE rejects as a crossed self-trade.
+        # Bumping the ask by one tick is cheaper than refusing to quote.
         bid = int(round(midprice - half))
         ask = int(round(midprice + half))
         if ask <= bid:

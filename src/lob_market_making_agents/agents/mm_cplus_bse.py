@@ -41,7 +41,13 @@ class MMCPlusBSETrader(MMCBSETrader):
         reward = (current_pnl - self.prev_pnl) - self.lambda_penalty * (self.inventory ** 2)
         self.prev_pnl = current_pnl
 
-        # Observe the new state s' BEFORE the Q update.
+        # WHY observe s' before updating Q: the TD(0) target r + γ·max_a' Q[s',a']
+        # is what makes this Q-learning rather than a contextual bandit. Computing
+        # next_state_idx *after* the reward but *before* _select_action ensures the
+        # bootstrap uses the genuine successor state. If we instead reused the
+        # bandit's `_update_q(reward)` call order from the parent class, the
+        # bootstrap would peek at the s' chosen by the previous step's policy —
+        # the exact bug Sutton & Barto warn about in their Q-learning pseudo-code.
         next_state_idx = self._discretize_state(volatility_proxy)
         self._td_update(reward, next_state_idx)
 

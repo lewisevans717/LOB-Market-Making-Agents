@@ -330,8 +330,13 @@ def run_grid(
         if executed >= max_runs:
             break
 
-        # Resume: a finished run leaves summary.json in its run_dir.
-        # build_run_id is pure (no session work), so the existence check is cheap.
+        # WHY summary.json as the completion marker: the artifact writer flushes
+        # summary.json *last* in `write_run_artifacts`, so its presence is a
+        # post-fsync guarantee that every other artefact for the run is on disk.
+        # No new sentinel file needed. build_run_id is deterministic in its
+        # inputs, so a re-invocation with the same config + seed list lands on
+        # the same run_dir and skips cleanly — this is what makes the grid
+        # CLI safely resumable across crashes.
         run_id = build_run_id(
             config_name=config_name,
             agent=agent,

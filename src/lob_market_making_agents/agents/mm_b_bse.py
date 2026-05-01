@@ -22,9 +22,16 @@ class MMBBSETrader(MMABSETrader):
         self.max_spread = float(cfg.get("max_spread", 8.0))
 
     def quote_prices(self, midprice: float, volatility_proxy: float = 0.0) -> tuple[int, int]:
+        # WHY: spread widens linearly with the volatility proxy (Avellaneda-Stoikov 2008
+        # gives an exponential reservation-price model; we use a linear proxy because BSE
+        # ticks are discrete and the closed-form γ·σ² term has no observable counterpart
+        # without an analytic price process).
         dynamic_spread = self.base_spread + (self.vol_spread_multiplier * max(volatility_proxy, 0.0))
         dynamic_spread = min(max(dynamic_spread, self.min_spread), self.max_spread)
 
+        # WHY: inventory skew leans the quote *against* the current position so fills
+        # reduce |q|. Sign is negative because long inventory (q>0) should drag the
+        # midprice down, encouraging asks and discouraging bids.
         raw_skew = -self.inventory * self.inventory_skew_per_unit
         skew = min(max(raw_skew, -self.max_skew), self.max_skew)
         center = float(midprice) + skew

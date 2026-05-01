@@ -125,7 +125,14 @@ class MMCBSETrader(MMABSETrader):
     # -- internals -------------------------------------------------------------
 
     def _discretize_state(self, vol_proxy: float) -> int:
-        """Map continuous (inventory, vol, flow) to a flat state index."""
+        """Map continuous (inventory, vol, flow) to a flat state index.
+
+        WHY discretise: a tabular Q-table is the simplest learner that gives an
+        interpretable visit-count diagnostic for the report (we can show which
+        cells the agent actually explored). Function approximation would hide
+        that signal. Bin counts are kept small (5×3×3=45 states × 20 actions =
+        900 cells) so the bandit converges within a 5,000-step episode.
+        """
         inv_bin = int(np.searchsorted(self.inv_bins, self.inventory))
         vol_bin = int(np.searchsorted(self.vol_bins, vol_proxy))
         flow_bin = int(np.searchsorted(self.flow_bins, self.flow_imbalance))
@@ -151,6 +158,11 @@ class MMCBSETrader(MMABSETrader):
     def quote_prices(self, midprice: float, volatility_proxy: float = 0.0) -> tuple[int, int]:
         """Select spread/skew via bandit policy and return (bid, ask)."""
         # 1. Compute reward from previous step and update Q
+        # WHY q² (not |q|): squaring penalises large positions super-linearly so
+        # the bandit treats inventory risk as a variance cost rather than a
+        # linear holding fee — matches the standard market-making utility in
+        # Cartea/Jaimungal/Penalva (2015) and produces a smoother gradient for
+        # ε-greedy to climb.
         current_pnl = self.pnl(midprice)
         reward = (current_pnl - self.prev_pnl) - self.lambda_penalty * (self.inventory ** 2)
         self._update_q(reward)

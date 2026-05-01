@@ -57,7 +57,15 @@ COMPETITOR_MM_STATE_COLUMNS = (
 
 
 def build_run_id(*, config_name: str, agent: str, volatility: str, toxicity: float, competition: str, seed: int) -> str:
-    """Build a deterministic run identifier from run metadata."""
+    """Build a deterministic run identifier from run metadata.
+
+    WHY a SHA-1 digest tail: the human-readable prefix collides for any two
+    runs whose readable tuple matches but whose `config_name` differs only by
+    a sub-experiment suffix (e.g. `_pareto_lam0p010000`). Appending a 10-char
+    digest makes run_id collision-resistant *without* relying on the suffix
+    being unique — the resume logic and the metrics aggregator both depend on
+    run_id ↔ run_dir being a bijection.
+    """
     payload = f"{config_name}|{agent}|{volatility}|{toxicity}|{competition}|{seed}"
     digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()[:10]
     tox = int(round(float(toxicity)))

@@ -15,6 +15,24 @@ Design and evaluate multiple market-making agents in a simulated limit order boo
 
 ---
 
+## 1.5) Headline results
+
+Generated from `notebooks/01..03` over 3,480 runs (5,000-step episodes, 30 seeds per condition). Full figures in `results/figures/`, statistical tables under `results/metrics/`.
+
+**H1 (PnL ranking).** With moderate or higher toxic flow, learning agents (C, C+) earn the only consistently positive mean PnL; fixed-spread A and inventory-aware B sit near zero. Without toxic flow, learning agents extract substantial spread capture and the four-agent ordering A < B < C ≲ C+ holds across all volatility regimes.
+
+![PnL boxplots — with competitor](results/figures/core/pnl_box_with_competitor.png)
+
+**H2 (inventory control).** Inventory-aware quoting (B, C, C+) keeps `max|q|` materially below the fixed-spread baseline; C+'s TD bootstrap closes most of the residual gap to B at higher λ values (see `02_pareto.ipynb`).
+
+**H3 (regime-shift transfer).** Frozen Q-tables transferred across regimes incur a measurable PnL penalty relative to native re-training; the gap is larger calm→stressed than stressed→calm. Numerical penalty table at `results/metrics/transfer/transfer_penalty.csv`.
+
+![Pareto frontier — C vs C+](results/figures/pareto/frontier_overlay.png)
+
+Pairwise Welch's t and bootstrap CIs are tabulated in `results/metrics/core/{pairwise_tests,ci_table}.csv` and feed §6 of the report.
+
+---
+
 ## 2) Environment and market setup
 
 ### Environment
