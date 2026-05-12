@@ -7,7 +7,7 @@ regimes:
 agents: [A, B, C, C_PLUS]
 bse:
   session:
-    episode_steps: 5000
+    episode_steps: 10000
     base_midprice: 100.0
     size: 1.0
     external_order_probability: 0.7
@@ -52,7 +52,7 @@ single_run:
     volatility: low
     toxicity: 10
     competition: solo
-  episode_steps: 5000
+  episode_steps: 10000
   base_midprice: 100.0
   size: 1.0
 pareto:

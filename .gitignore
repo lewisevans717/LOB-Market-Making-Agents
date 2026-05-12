@@ -18,6 +18,8 @@ venv/
 # Outputs and notebooks
 results/
 *.ipynb_checkpoints/
+results_5k_archive/
+logs/
 
 # OS/editor
 .DS_Store
@@ -28,3 +30,8 @@ Module Files/COMP3004_4105_arkingScheme.docx
 Module Files/COMP3004_4105_coursework_2026_final.pdf
 Module Files/COMP3004_markingScheme.docx
 Module Files/courseworkIntro.pptx
+AI_USAGE.md
+.gitignore
+report/main.md
+report/Makefile
+report/proposed_readme_1_5.md
