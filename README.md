@@ -17,19 +17,27 @@ Design and evaluate multiple market-making agents in a simulated limit order boo
 
 ## 1.5) Headline results
 
-Generated from `notebooks/01..03` over 3,480 runs (5,000-step episodes, 30 seeds per condition). Full figures in `results/figures/`, statistical tables under `results/metrics/`.
+Generated from `notebooks/01..03` over 10,000-step episodes, 30 seeds per condition × 18 regime cells (3 vol × 3 toxicity × 2 competition). Full figures in `results/figures/`, statistical tables under `results/metrics/`.
 
-**H1 (PnL ranking).** With moderate or higher toxic flow, learning agents (C, C+) earn the only consistently positive mean PnL; fixed-spread A and inventory-aware B sit near zero. Without toxic flow, learning agents extract substantial spread capture and the four-agent ordering A < B < C ≲ C+ holds across all volatility regimes.
+**H1 (PnL ranking).** The ordering A < B < {C, C+} holds across all 18 regime cells. Learning agents (C, C+) are the only ones with consistently positive PnL; fixed-spread A sits at a flat ~7k mean and inventory-aware B is either near zero or deeply negative depending on toxicity (see B-collapse note below). C vs C+ depends on which moment is read: pooled across all 540 runs per agent, C+ has the higher mean (613k vs 453k) but C has the higher median (143k vs 84k). At the per-cell level, Welch's t finds C significantly ahead of C+ at every toxicity ≥ 10 cell (p ranging 4e-5 to 2e-8); C+'s pooled mean advantage is driven by fat upside tails in the tox=0 + with_competitor cells (mean 2.4M–4.2M with both higher upside and worse 5th-percentile outcomes than C). Read as: C+'s TD bootstrap gives higher upside and downside variance, while the bandit C is more robust on the median.
 
 ![PnL boxplots — with competitor](results/figures/core/pnl_box_with_competitor.png)
 
-**H2 (inventory control).** Inventory-aware quoting (B, C, C+) keeps `max|q|` materially below the fixed-spread baseline; C+'s TD bootstrap closes most of the residual gap to B at higher λ values (see `02_pareto.ipynb`).
+**H2 (inventory control).** Pooled mean `max|q|` across all 18 cells: A=134, C=236, C+=465, B=1,163. Fixed-spread A and the bandit C contain inventory tightly; C+'s TD bootstrap is materially looser; B's heuristic skew rule does not contain inventory at all, and the gap is much more visible at 10k than 5k. The ranking A < C < C+ ≪ B is preserved across all three volatility levels.
 
-**H3 (regime-shift transfer).** Frozen Q-tables transferred across regimes incur a measurable PnL penalty relative to native re-training; the gap is larger calm→stressed than stressed→calm. Numerical penalty table at `results/metrics/transfer/transfer_penalty.csv`.
+**B's catastrophic loss is concentrated at toxicity=0 (new at 10k).** With no toxic flow forcing turnover, B's skew rule accumulates inventory without bound over a 10k session: pooled mean PnL ≈ −13.3M and pooled mean `max|q|` ≈ 3,090 across vol levels at tox=0 solo. At toxicity 10 and 30, B is mildly positive (8–17k mean, 18–30k median across vol). This is the cleanest "why a naive market-maker fails" signal in the dataset and only surfaces at 10k episode lengths.
+
+**H3 (regime-shift transfer — direction inverted vs 5k).** For agent C, calm-trained policies transfer to stressed flow cleanly while stressed-trained policies degrade when redeployed to calm flow:
+- Native calm 341k → transferred stressed→calm 256k (~25% loss; Wilcoxon p=0.10, median Δ ≈ +48k in favour of native)
+- Native stressed 76k → transferred calm→stressed 81k (small positive surprise; Wilcoxon p=0.038, median Δ ≈ −4k)
+
+For agent C+, the picture is dominated by TD-bootstrap brittleness. Stressed→calm transfer produces 3 catastrophic seeds out of 30 (seeds 103, 107, 127 with final PnL −13.9M, −16.2M, −15.1M and `max|q|` of 2,810 / 3,317 / 3,405); the other 27 seeds behave normally (24.0k–669.3k). Mean and median diverge wildly (transferred mean −1.30M, median +152k; native mean 334k, median 287k), so the Wilcoxon signed-rank test (p=0.0013) is the reliable headline. Agent C exhibits no comparable failure mode at any seed — the ≈10% catastrophic failure rate is specific to TD bootstrapping under regime shift. Full table at `results/metrics/transfer/transfer_penalty.csv`; non-parametric tests at `wilcoxon_tests.csv`.
 
 ![Pareto frontier — C vs C+](results/figures/pareto/frontier_overlay.png)
 
-Pairwise Welch's t and bootstrap CIs are tabulated in `results/metrics/core/{pairwise_tests,ci_table}.csv` and feed §6 of the report.
+**Pareto frontier.** The risk-penalty knee sits in λ ∈ [0, 0.1] for both learning agents (C: 0.001 / 0 / 0.1 at low/medium/high vol; C+: 0.01 / 0.05 / 0 at low/medium/high vol). PnL is dented modestly relative to λ=0 while inventory variance is materially reduced; λ=0.5 hurts both objectives. Story is unchanged from 5k; numbers pulled from `results/metrics/pareto/knee_lambda.csv`.
+
+Pairwise Welch's t and bootstrap CIs (for central-tendency contrasts) are in `results/metrics/core/{pairwise_tests,ci_table}.csv`; Wilcoxon signed-rank is used for the heavy-tailed transfer contrasts. These feed §6 of the report.
 
 ---
 
